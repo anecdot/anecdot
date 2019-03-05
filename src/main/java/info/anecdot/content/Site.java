@@ -5,9 +5,8 @@ import org.apache.commons.io.FilenameUtils;
 import org.springframework.util.StringUtils;
 
 import javax.persistence.*;
+import java.net.URI;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Locale;
 
 /**
@@ -34,8 +33,10 @@ public class Site {
     @Convert(converter = PathToStringConverter.class)
     private Path themeDirectory;
 
-    @OneToMany(mappedBy = "site", fetch = FetchType.LAZY, cascade = CascadeType.REMOVE, orphanRemoval = true)
-    private final List<Item> items = new ArrayList<>();
+//    @OneToMany(mappedBy = "site", fetch = FetchType.LAZY, cascade = CascadeType.REMOVE, orphanRemoval = true)
+//    private final List<Item> items = new ArrayList<>();
+
+    private String syncId;
 
     public Long getId() {
         return id;
@@ -93,17 +94,35 @@ public class Site {
         this.themeDirectory = themeDirectory;
     }
 
-    public List<Item> getItems() {
-        return items;
+//    public List<Item> getItems() {
+//        return Collections.unmodifiableList(items);
+//    }
+//
+//    public boolean addItem(Item item) {
+//        if (items.add(item)) {
+//            item.site = this;
+//
+//            return true;
+//        }
+//
+//        return false;
+//    }
+
+    public String getSyncId() {
+        return syncId;
     }
 
-    public String toURI(Path file) {
+    public void setSyncId(String syncId) {
+        this.syncId = syncId;
+    }
+
+    public URI toURI(Path file) {
         String uri = contentDirectory.relativize(file).toString();
         uri = FilenameUtils.removeExtension(uri);
         if (!StringUtils.startsWithIgnoreCase(uri, "/")) {
             uri = "/" + uri;
         }
 
-        return uri;
+        return URI.create(uri);
     }
 }

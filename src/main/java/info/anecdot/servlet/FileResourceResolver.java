@@ -51,7 +51,11 @@ public class FileResourceResolver extends AbstractResourceResolver {
 
             if (imagingService.isImageRequest(request)) {
 
-                return imagingService.resolveImageResource(location, request);
+                try {
+                    return imagingService.resolveImageResource(location, request);
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
             }
 
             return applicationContext.getResource(location);

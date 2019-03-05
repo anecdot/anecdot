@@ -87,6 +87,19 @@ public class Knot {
 
         return removed;
     }
+    
+    public Item getItem() {
+        if (this instanceof Item) {
+            return (Item) this;
+        } else if (sequence != null) {
+            Knot parent = sequence.getParent();
+            if (parent != null) {
+                return parent.getItem();
+            }
+        }
+
+        return null;
+    }
 
     public Map<String, String> getAttributes() {
         return attributes;

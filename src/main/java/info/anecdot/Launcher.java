@@ -46,10 +46,10 @@ import java.util.List;
 @SpringBootApplication(exclude = {
 		ThymeleafAutoConfiguration.class})
 @PropertySources({
-		@PropertySource("default.properties"),
-		@PropertySource(ignoreResourceNotFound = true, value = {
-				"file:./anecdot.properties",
-				"file:/etc/anecdot/anecdot.properties"})})
+		@PropertySource("default.properties")})
+//		@PropertySource(ignoreResourceNotFound = true, value = {
+//				"file:./anecdot.properties",
+//				"file:/etc/anecdot/anecdot.properties"})})
 @Import({Launcher.Web.class, Launcher.WebSecurity.class})
 @EnableCaching
 @EnableAsync(proxyTargetClass=true)

@@ -19,6 +19,7 @@ public class PathWatcher implements Closeable, AutoCloseable {
 
     public interface WatchHandler {
 
+        void initialized();
         void visited(Path path);
         void created(Path path);
         void modified(Path path);
@@ -27,6 +28,9 @@ public class PathWatcher implements Closeable, AutoCloseable {
     }
 
     public static class AbstractWatchHandler implements WatchHandler {
+
+        @Override
+        public void initialized() { }
 
         @Override
         public void visited(Path path) { }
@@ -174,6 +178,8 @@ public class PathWatcher implements Closeable, AutoCloseable {
     public void watch(Duration wait) throws InterruptedException {
         if (keys.isEmpty()) {
             register(directory);
+            Optional.ofNullable(handler)
+                    .ifPresent(WatchHandler::initialized);
         }
 
         if (wait == null) {

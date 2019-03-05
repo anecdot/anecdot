@@ -52,7 +52,7 @@
         <appender-ref ref="DEFAULT"/>
     </root>
 
-    <logger name="info.anecdot" level="INFO" additivity="false">
+    <logger name="info.anecdot" level="DEBUG" additivity="false">
         <appender-ref ref="CONSOLE"/>
         <appender-ref ref="DEFAULT"/>
     </logger>

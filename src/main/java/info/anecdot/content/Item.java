@@ -1,6 +1,7 @@
 package info.anecdot.content;
 
 import javax.persistence.*;
+import java.net.URI;
 import java.time.LocalDateTime;
 
 /**
@@ -14,11 +15,19 @@ public class Item extends Knot {
     @ManyToOne(optional = false)
     @JoinColumn(name = "site_id")
     private Site site;
-    private String uri;
+
+    @Convert(converter = URIConverter.class)
+    private URI uri;
 
     private String type;
 
     private LocalDateTime lastModified;
+    private String syncId;
+
+    private String description;
+
+    @Convert(converter = URIConverter.class)
+    private URI image;
 
     public Site getSite() {
         return site;
@@ -26,17 +35,13 @@ public class Item extends Knot {
 
     public void setSite(Site site) {
         this.site = site;
-
-        if (!site.getItems().contains(this)) {
-            site.getItems().add(this);
-        }
     }
 
-    public String getUri() {
+    public URI getUri() {
         return uri;
     }
 
-    public void setUri(String uri) {
+    public void setUri(URI uri) {
         this.uri = uri;
     }
 
@@ -54,5 +59,29 @@ public class Item extends Knot {
 
     public void setLastModified(LocalDateTime lastModified) {
         this.lastModified = lastModified;
+    }
+
+    public String getSyncId() {
+        return syncId;
+    }
+
+    public void setSyncId(String syncId) {
+        this.syncId = syncId;
+    }
+
+    public String getDescription() {
+        return description;
+    }
+
+    public void setDescription(String description) {
+        this.description = description;
+    }
+
+    public URI getImage() {
+        return image;
+    }
+
+    public void setImage(URI image) {
+        this.image = image;
     }
 }

@@ -8,6 +8,7 @@ apply plugin: 'io.spring.dependency-management'
 group = 'info.anecdot'
 version = '0.0.1-SNAPSHOT'
 sourceCompatibility = '1.8'
+targetCompatibility = '1.8'
 
 repositories {
 	mavenCentral()
@@ -32,4 +33,12 @@ dependencies {
 	compile group: 'com.atlassian.commonmark', name: 'commonmark', version: '0.12.1'
 
 	testImplementation 'org.springframework.boot:spring-boot-starter-test'
+}
+
+//springBoot {
+//	executable = true
+//}
+
+bootJar {
+	launchScript()
 }

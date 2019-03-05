@@ -17,6 +17,7 @@ import org.springframework.util.StringUtils;
 
 import javax.servlet.http.HttpServletRequest;
 import java.io.IOException;
+import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -24,7 +25,6 @@ import java.nio.file.attribute.BasicFileAttributes;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.*;
-import java.util.stream.Collectors;
 
 /**
  * @author Stephan Grundner
@@ -82,6 +82,17 @@ public class SiteService {
         return siteRepository.findByName(name);
     }
 
+    private Site findOrCreateSiteByName(String name) {
+        Site site = findSiteByName(name);
+        if (site == null) {
+            site = new Site();
+            site.setName(name);
+//            site = saveSite(site);
+        }
+
+        return site;
+    }
+
     public Site findSiteByRequest(HttpServletRequest request) {
         return findSiteByName(request.getServerName());
     }
@@ -102,7 +113,7 @@ public class SiteService {
                 return;
             }
 
-            String uri = site.toURI(file);
+            URI uri = site.toURI(file);
             Item item = itemService.findItemBySiteAndURI(site, uri);
             if (item != null) {
                 BasicFileAttributes fileAttributes = Files.readAttributes(file, BasicFileAttributes.class);
@@ -112,6 +123,9 @@ public class SiteService {
                 if (lastModified.isAfter(item.getLastModified())) {
                     itemService.loadItem(site, file);
                     LOG.info("Reloaded " + file);
+                } else {
+                    item.setSyncId(site.getSyncId());
+                    item = itemService.saveItem(item);
                 }
             } else {
                 itemService.loadItem(site, file);
@@ -133,7 +147,7 @@ public class SiteService {
     }
 
     private void deleteItemByFile(Site site, Path file) {
-        String uri = site.toURI(file);
+        URI uri = site.toURI(file);
         itemService.deleteItemBySiteAndURI(site, uri);
     }
 
@@ -150,11 +164,9 @@ public class SiteService {
             Cache cache = cacheManager.getCache("sites");
             cache.evict(name);
 
-            Site site = findSiteByName(name);
-            if (site == null) {
-                site = new Site();
-                site.setName(name);
-            }
+            final Site site = findOrCreateSiteByName(name);
+            site.setBusy(true);
+            site.setSyncId(UUID.randomUUID().toString());
 
 //            List<String> names = getProperties(propertyResolver, prefix + ".aliases");
 //            site.getAliases().addAll(names);
@@ -175,40 +187,46 @@ public class SiteService {
             Locale locale = environment.getProperty(prefix + ".locale", Locale.class);
             site.setLocale(locale);
 
-            site = saveSite(site);
-            sites.add(site);
-            cache.put(name, site);
+            Site saved = saveSite(site);
+            sites.add(saved);
+            cache.put(name, saved);
 
             PathWatcher watcher = new PathWatcher(site.getContentDirectory());
             watcherBySiteName.put(site.getName(), watcher);
 
-            Site s = site;
             watcher.setHandler(new PathWatcher.AbstractWatchHandler() {
+                @Override
+                public void initialized() {
+                    site.setBusy(false);
+                    saveSite(site);
+                    itemService.deleteAllObsoleteItems(site);
+                }
+
                 @Override
                 public void visited(Path path) {
                     if (Files.isRegularFile(path)) {
-                        reload(s, path);
+                        reload(site, path);
                     }
                 }
 
                 @Override
                 public void created(Path path) {
                     if (Files.isRegularFile(path)) {
-                        reload(s, path);
+                        reload(site, path);
                     }
                 }
 
                 @Override
                 public void modified(Path path) {
                     if (Files.isRegularFile(path)) {
-                        reload(s, path);
+                        reload(site, path);
                     }
                 }
 
                 @Override
                 public void deleted(Path path, boolean regularFile) {
                     if (regularFile) {
-                        deleteItemByFile(s, path);
+                        deleteItemByFile(site, path);
                     }
                 }
             });

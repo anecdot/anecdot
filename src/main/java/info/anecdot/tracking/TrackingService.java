@@ -9,6 +9,7 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import java.time.LocalDateTime;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Stream;
 
@@ -46,7 +47,7 @@ public class TrackingService {
     }
 
     public Track track(HttpServletRequest request, HttpServletResponse response) {
-        Cookie cookie = Stream.of(request.getCookies())
+        Cookie cookie = Stream.of(Optional.ofNullable(request.getCookies()).orElse(new Cookie[] {}))
                 .filter(Objects::nonNull)
                 .filter(it -> "VISITOR".equalsIgnoreCase(it.getName()))
                 .findFirst().orElse(null);

@@ -1,5 +1,6 @@
 package info.anecdot.xml;
 
+import org.springframework.util.StringUtils;
 import org.w3c.dom.Attr;
 import org.w3c.dom.NamedNodeMap;
 import org.w3c.dom.Node;
@@ -72,16 +73,40 @@ public interface DomAndXPathSupport {
 
     XPath getXPath();
 
-    default NodeList nodeList(String expression, Object source) {
+    default Stream<Node> nodes(String expression, Object source) {
         try {
-            return (NodeList) getXPath().evaluate(expression, source, XPathConstants.NODESET);
+            return nodes((NodeList) getXPath().evaluate(expression, source, XPathConstants.NODESET));
         } catch (XPathExpressionException e) {
             throw new RuntimeException(e);
         }
     }
 
-    default Stream<Node> nodes(String expression, Object source) {
-        return nodes(nodeList(expression, source));
+    default Node node(String expression, Object source, boolean resolveRef) {
+        try {
+            Node node = (Node) getXPath().evaluate(expression, source, XPathConstants.NODE);
+            if (resolveRef) {
+                String ref = attribute("ref", node);
+                if (StringUtils.hasText(ref)) {
+                    node = node(ref, source);
+                }
+            }
+
+            return node;
+        } catch (XPathExpressionException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    default Node node(String expression, Object source) {
+        return node(expression, source, false);
+    }
+
+    default String text(String expression, Object source) {
+        try {
+            return (String) getXPath().evaluate(expression, source, XPathConstants.STRING);
+        } catch (XPathExpressionException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     default String attribute(String name, Node node) {
@@ -95,18 +120,4 @@ public interface DomAndXPathSupport {
 
         return null;
     }
-
-//    default int indexOfNodeInSameLevel(Node node, Predicate<Node> predicate) {
-//        Node current = node;
-//        int n = -1;
-//        while (current != null) {
-//            if (predicate.test(current)) {
-//                n++;
-//            }
-//
-//            current = current.getPreviousSibling();
-//        }
-//
-//        return n;
-//    }
 }

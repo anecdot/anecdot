@@ -4,10 +4,7 @@ import com.mitchellbosecke.pebble.extension.AbstractExtension;
 import com.mitchellbosecke.pebble.extension.Function;
 import com.mitchellbosecke.pebble.template.EvaluationContext;
 import com.mitchellbosecke.pebble.template.PebbleTemplate;
-import info.anecdot.content.Item;
-import info.anecdot.content.ItemService;
-import info.anecdot.content.Site;
-import info.anecdot.content.SiteService;
+import info.anecdot.content.*;
 import org.commonmark.parser.Parser;
 import org.commonmark.renderer.html.HtmlRenderer;
 import org.springframework.context.ApplicationContext;
@@ -23,6 +20,7 @@ import org.springframework.web.context.request.ServletRequestAttributes;
 import javax.persistence.EntityManager;
 import javax.persistence.TypedQuery;
 import javax.servlet.http.HttpServletRequest;
+import java.net.URI;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -60,6 +58,11 @@ public class FunctionsExtension extends AbstractExtension {
             StringBuilder ql = new StringBuilder();
             ql.append("select i from Item i where i.site = :site");
 
+            String uri = (String) args.get("uri");
+            if (StringUtils.hasText(uri)) {
+                ql.append(" and i.uri like '").append(uri).append('\'');
+            }
+
             String sort = (String) args.get("sort");
             if (StringUtils.hasText(sort)) {
                 ql.append(" order by ")
@@ -80,7 +83,7 @@ public class FunctionsExtension extends AbstractExtension {
 
         @Override
         public List<String> getArgumentNames() {
-            return Arrays.asList("path", "tags", "limit", "offset", "sort");
+            return Arrays.asList("uri", "tags", "limit", "offset", "sort");
         }
     }
 
@@ -133,6 +136,57 @@ public class FunctionsExtension extends AbstractExtension {
         }
     }
 
+    private class UrlFunction implements Function {
+
+        @Override
+        public Object execute(Map<String, Object> args, PebbleTemplate self, EvaluationContext evaluationContext, int lineNumber) {
+            boolean absolute = (boolean) args.getOrDefault("absolute", false);
+
+            Knot knot;
+            Object knotOrMap = args.get("knot");
+            if (knotOrMap instanceof Map) {
+                knot = (Knot) ((Map) knotOrMap).get("#knot");
+            } else {
+                knot = (Knot) knotOrMap;
+            }
+
+            if (knot != null) {
+                if (knot instanceof Item) {
+
+                    return ((Item) knot).getUri();
+                }
+
+                if (absolute) {
+                    Item item = knot.getItem();
+                    URI uri = item.getUri();
+
+                    String path = uri.getPath();
+                    if (!path.endsWith("/")) {
+                        int i = path.lastIndexOf('/');
+                        path = path.substring(0, i);
+                    }
+
+                    HttpServletRequest request = currentRequest();
+
+                    SiteService siteService = applicationContext.getBean(SiteService.class);
+                    Site site = siteService.findSiteByRequest(request);
+
+                    return request.getScheme() + "://" + site.getName() + path + "/" + knot.getValue();
+                } else {
+
+                    return knot.getValue();
+                }
+            }
+
+            return null;
+        }
+
+        @Override
+        public List<String> getArgumentNames() {
+            return Arrays.asList("knot", "absolute");
+        }
+    }
+
     private final ApplicationContext applicationContext;
 
     @Override
@@ -141,6 +195,7 @@ public class FunctionsExtension extends AbstractExtension {
         functions.put("items", new ItemsFunction());
         functions.put("eval", new EvalFunction());
         functions.put("md", new MarkdownFunction());
+        functions.put("url", new UrlFunction());
 
         return functions;
     }

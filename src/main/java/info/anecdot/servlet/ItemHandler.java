@@ -43,6 +43,7 @@ public class ItemHandler implements HttpRequestHandler {
         Item item = itemService.findItemBySiteAndURI(site, request.getRequestURI());
         if (item != null) {
             request.setAttribute(Item.class.getName(), item);
+            modelAndView.addObject("site", site);
             modelAndView.addObject("page", itemService.toMap(item));
 
             Map<String, Object> params = new LinkedHashMap<>();
