@@ -4,16 +4,11 @@ import com.sun.org.apache.xml.internal.utils.DefaultErrorHandler;
 import info.anecdot.xml.DomAndXPathSupport;
 import org.apache.commons.collections4.map.AbstractMapDecorator;
 import org.apache.commons.collections4.map.LazyMap;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-import org.springframework.util.StringUtils;
 import org.w3c.dom.*;
 import org.xml.sax.SAXException;
 
-import javax.persistence.EntityManager;
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.parsers.ParserConfigurationException;
@@ -21,12 +16,9 @@ import javax.xml.xpath.XPath;
 import javax.xml.xpath.XPathFactory;
 import java.io.IOException;
 import java.io.InputStream;
-import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.attribute.BasicFileAttributes;
-import java.time.LocalDateTime;
-import java.time.ZoneOffset;
+import java.nio.file.Paths;
 import java.util.*;
 
 /**
@@ -35,97 +27,56 @@ import java.util.*;
 @Service
 public class ItemService implements DomAndXPathSupport {
 
-    private static final Logger LOG = LoggerFactory.getLogger(ItemService.class);
+    private final XPath xPath = XPathFactory.newInstance().newXPath();
 
     @Autowired
     private ItemRepository itemRepository;
 
-    @Autowired
-    private EntityManager entityManager;
-
-    private XPath xPath;
-
     @Override
     public XPath getXPath() {
-        if (xPath == null) {
-            xPath = XPathFactory.newInstance().newXPath();
-        }
-
         return xPath;
     }
 
-    public Item findItemBySiteAndURI(Site site, URI uri) {
-        if (uri.getPath().equals("/")) {
-            uri = URI.create(site.getHome());
-        }
-
-        return itemRepository.findItemByURI(uri);
+    public List<Item> findAllItemsBySite(Site site) {
+        return itemRepository.findAllByAsset_Site(site);
     }
 
-    public Item findItemBySiteAndURI(Site site, String uri) {
-        return findItemBySiteAndURI(site, URI.create(uri));
+    public Item findItemByAsset(Asset asset) {
+        return itemRepository.findByAsset(asset);
     }
 
-    @Transactional
-    public boolean deleteItemBySiteAndURI(Site site, URI uri) {
-        Item item = findItemBySiteAndURI(site, uri);
+    public void deleteItem(Item item) {
+        itemRepository.delete(item);
+    }
+
+    public void deleteItemForAsset(Asset asset) {
+        Item item = findItemByAsset(asset);
         if (item != null) {
-            itemRepository.delete(item);
-
-            return true;
+            deleteItem(item);
         }
-
-        return false;
     }
 
-    @Transactional
-    public Item saveItem(Item item) {
-        Site site = item.getSite();
-        if (deleteItemBySiteAndURI(site, item.getUri())) {
-            entityManager.flush();
-        }
-
-        return itemRepository.saveAndFlush(item);
-    }
-
-    private boolean hasChildElements(Node node) {
-        NodeList children = node.getChildNodes();
-        if (children.getLength() == 0) {
-            return false;
-        }
-
-        for (int i = 0; i < children.getLength(); i++) {
-            Node child = children.item(i);
-            if (child.getNodeType() == Node.ELEMENT_NODE) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private boolean isRootNode(Node node) {
-        Node parentNode = node.getParentNode();
-        return parentNode != null && parentNode.getNodeType() == Node.DOCUMENT_NODE;
+    private Item saveItem(Item item) {
+        return itemRepository.save(item);
     }
 
     private Knot fromNode(Node node) {
 
-        String ref = attribute("ref", node);
-        if (StringUtils.hasText(ref)) {
-            node = node(ref, node.getOwnerDocument().getDocumentElement());
-        }
+//        String ref = attribute("ref", node);
+//        if (StringUtils.hasText(ref)) {
+//            node = node(ref, node.getOwnerDocument().getDocumentElement());
+//        }
 
         Knot knot;
 
-        if (isRootNode(node)) {
-            knot = new Item();
-            ((Item) knot).setType(node.getNodeName());
-        } else {
-            knot = new Knot();
-        }
-
         if (hasChildElements(node)) {
+
+            if (isRootNode(node)) {
+                knot = new Item();
+                ((Item) knot).setType(node.getNodeName());
+            } else {
+                knot = new Knot();
+            }
 
             NodeList children = node.getChildNodes();
             for (int i = 0; i < children.getLength(); i++) {
@@ -141,10 +92,12 @@ public class ItemService implements DomAndXPathSupport {
                     knot.addSequence(childName, sequence);
                 }
 
-                sequence.appendKnot(fromNode(childNode));
+                sequence.appendChild(fromNode(childNode));
             }
+
         } else {
-            knot.setValue(node.getTextContent());
+            knot = new Text();
+            ((Text) knot).setValue(node.getTextContent());
         }
 
         NamedNodeMap attributes = node.getAttributes();
@@ -158,64 +111,42 @@ public class ItemService implements DomAndXPathSupport {
         return knot;
     }
 
-    private void loadMeta(Document document, Item item) {
-        String expression = text("@meta", document.getDocumentElement());
-        if (StringUtils.isEmpty(expression)) {
-            expression = "current()/meta";
+    public Item loadItem(Asset asset) {
+        Item item = findItemByAsset(asset);
+        if (item != null) {
+            deleteItem(item);
         }
 
-        Node meta = node(expression, document.getDocumentElement());
-        if (meta != null) {
-            Node description = node("description", meta, true);
-            item.setDescription(description.getTextContent());
+        Site site = asset.getSite();
 
-            URI image = URI.create(text("image", meta));
-            if (StringUtils.hasLength(image.getPath())) {
-                item.setImage(image);
-            }
-        }
-    }
-
-    @Transactional
-//    @CacheEvict(cacheNames = "items", key = "{#site.host, #site.toURI(#file)}")
-    public Item loadItem(Site site, Path file) throws IOException {
         DocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance();
-
+        Path file = Paths.get("./tmp", site.getHost(), asset.getPath());
         try (InputStream inputStream = Files.newInputStream(file)) {
             DocumentBuilder db = dbf.newDocumentBuilder();
             db.setErrorHandler(new DefaultErrorHandler());
 
             Document document = db.parse(inputStream);
 
-            Item item = (Item) fromNode(document.getDocumentElement());
-            item.setSite(site);
-            item.setSyncId(site.getSyncId());
+            item = (Item) fromNode(document.getDocumentElement());
+            item.setAsset(asset);
 
-            URI uri = site.toURI(file);
-            item.setUri(uri);
+//            item.setSite(site);
+//            item.setSyncId(site.getSyncId());
 
-            BasicFileAttributes fileAttributes = Files.readAttributes(file, BasicFileAttributes.class);
-            LocalDateTime lastModified = LocalDateTime.ofInstant(
-                    fileAttributes.lastModifiedTime().toInstant(),
-                    ZoneOffset.systemDefault());
-            item.setLastModified(lastModified);
+//            URI uri = site.toURI(file);
+//            item.setUri(uri);
 
-            loadMeta(document, item);
+//            BasicFileAttributes fileAttributes = Files.readAttributes(file, BasicFileAttributes.class);
+//            LocalDateTime lastModified = LocalDateTime.ofInstant(
+//                    fileAttributes.lastModifiedTime().toInstant(),
+//                    ZoneOffset.systemDefault());
+//            item.setLastModified(lastModified);
+
+//            loadMeta(document, item);
 
             return saveItem(item);
-        } catch (SAXException | ParserConfigurationException e) {
+        } catch (SAXException | ParserConfigurationException | IOException e) {
             throw new RuntimeException(e);
-        }
-    }
-
-    @Transactional
-    public void deleteAllObsoleteItems(Site site) {
-        List<Item> items = itemRepository.findAllObsolete(site);
-        itemRepository.deleteAll(items);
-
-        int n = items.size();
-        if (n > 0) {
-            LOG.info("Deleted {} obsolete items", n);
         }
     }
 
@@ -233,8 +164,8 @@ public class ItemService implements DomAndXPathSupport {
 
         map.put("#payload", knot);
         map.put("#knot", knot);
-        map.put("#name", Optional.ofNullable(knot.getSequence()).map(Sequence::getName).orElse(null));
-        map.put("#value", knot.getValue());
+        map.put("#name", Optional.ofNullable(knot.getParent()).map(Sequence::getName).orElse(null));
+        map.put("#value", knot instanceof Text ? ((Text) knot).getValue() : null);
         map.put("#parent", new AbstractMapDecorator<String, Object>(parent) {
             @Override
             public String toString() {
@@ -249,7 +180,7 @@ public class ItemService implements DomAndXPathSupport {
             Map<Object, Object> values = createMap();
             int i = 0;
 
-            for (Knot child : sequence.getKnots()) {
+            for (Knot child : sequence.getChildren()) {
                 Map<String, Object> childMap = toMap(child, map);
                 if (i == 0) {
                     values.putAll(childMap);
@@ -257,7 +188,7 @@ public class ItemService implements DomAndXPathSupport {
                 values.put(Integer.toString(i++), childMap);
             }
 
-            map.put(sequence.name, values);
+            map.put(sequence.getName(), values);
             children.add(values);
         });
 
@@ -266,7 +197,7 @@ public class ItemService implements DomAndXPathSupport {
         return map;
     }
 
-    public Map<String, Object> toMap(Knot payload) {
-        return toMap(payload, Collections.emptyMap());
+    public Map<String, Object> toMap(Knot knot) {
+        return toMap(knot, Collections.emptyMap());
     }
 }

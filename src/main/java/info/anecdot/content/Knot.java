@@ -10,33 +10,25 @@ import java.util.Map;
  * @author Stephan Grundner
  */
 @Entity
-@Inheritance(strategy = InheritanceType.JOINED)
-@DiscriminatorColumn(name = "kind")
-@DiscriminatorValue("knot")
+@Inheritance(strategy = InheritanceType.SINGLE_TABLE)
 public class Knot {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(insertable = false, updatable = false)
-    private String kind;
-
     @ManyToOne
-    private Sequence sequence;
+    private Sequence parent;
 
-    @Lob
-    private String value;
-
-    @OneToMany(mappedBy = "parent", fetch = FetchType.EAGER, cascade = {CascadeType.ALL}, orphanRemoval = true)
+    @OneToMany(mappedBy = "knot", cascade = CascadeType.ALL, fetch = FetchType.EAGER, orphanRemoval = true)
     @MapKey(name = "name")
     private final Map<String, Sequence> sequences = new LinkedHashMap<>();
 
-    @ElementCollection(fetch = FetchType.EAGER)
-    @CollectionTable(name = "attribute",
-            uniqueConstraints = @UniqueConstraint(columnNames = {"knot_id", "name"}))
-    @MapKeyColumn(name = "name")
+    @ElementCollection
+    @CollectionTable(name = "knot_attribute")
     @Column(name = "value")
+    @MapKeyColumn(name = "name")
+    @OrderColumn(name = "ordinal")
     private final Map<String, String> attributes = new LinkedHashMap<>();
 
     public Long getId() {
@@ -47,24 +39,12 @@ public class Knot {
         this.id = id;
     }
 
-    public String getKind() {
-        return kind;
+    public Sequence getParent() {
+        return parent;
     }
 
-    public Sequence getSequence() {
-        return sequence;
-    }
-
-    public void setSequence(Sequence sequence) {
-        this.sequence = sequence;
-    }
-
-    public String getValue() {
-        return value;
-    }
-
-    public void setValue(String value) {
-        this.value = value;
+    public void setParent(Sequence parent) {
+        this.parent = parent;
     }
 
     public Collection<Sequence> getSequences() {
@@ -78,30 +58,30 @@ public class Knot {
     public Sequence addSequence(String name, Sequence sequence) {
         Sequence removed = sequences.put(name, sequence);
         if (removed != null && removed != sequence) {
-            removed.setParent(null);
+            removed.setKnot(null);
             removed.setName(null);
         }
 
         sequence.setName(name);
-        sequence.setParent(this);
+        sequence.setKnot(this);
 
         return removed;
-    }
-    
-    public Item getItem() {
-        if (this instanceof Item) {
-            return (Item) this;
-        } else if (sequence != null) {
-            Knot parent = sequence.getParent();
-            if (parent != null) {
-                return parent.getItem();
-            }
-        }
-
-        return null;
     }
 
     public Map<String, String> getAttributes() {
         return attributes;
+    }
+
+    public Item getItem() {
+        if (this instanceof Item) {
+            return (Item) this;
+        } else if (parent != null) {
+            Knot knot = parent.getKnot();
+            if (knot != null) {
+                return knot.getItem();
+            }
+        }
+
+        return null;
     }
 }

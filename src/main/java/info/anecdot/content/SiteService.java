@@ -1,30 +1,30 @@
 package info.anecdot.content;
 
-import info.anecdot.io.PathWatcher;
-import info.anecdot.settings.SettingsService;
+import com.github.sardine.DavResource;
+import com.github.sardine.Sardine;
+import com.github.sardine.SardineFactory;
+import info.anecdot.sardine.DavResourceUtils;
+import info.anecdot.sardine.DavResourceVisitor;
+import org.apache.commons.io.FilenameUtils;
+import org.apache.commons.io.IOUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.cache.Cache;
-import org.springframework.cache.CacheManager;
-import org.springframework.context.ApplicationContext;
-import org.springframework.core.env.Environment;
-import org.springframework.core.env.PropertyResolver;
-import org.springframework.core.task.TaskExecutor;
-import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
-import org.springframework.util.StringUtils;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 
-import javax.servlet.http.HttpServletRequest;
 import java.io.IOException;
-import java.net.URI;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.nio.file.attribute.BasicFileAttributes;
-import java.time.LocalDateTime;
-import java.time.ZoneId;
-import java.util.*;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.List;
 
 /**
  * @author Stephan Grundner
@@ -34,221 +34,103 @@ public class SiteService {
 
     private static final Logger LOG = LoggerFactory.getLogger(SiteService.class);
 
-    private static List<String> getProperties(PropertyResolver propertyResolver, String key, List<String> defaultValues) {
-        class StringArrayList extends ArrayList<String> {
-            private StringArrayList(Collection<? extends String> c) {
-                super(c);
-            }
-
-            public StringArrayList() { }
-        }
-
-        return propertyResolver.getProperty(key, StringArrayList.class, new StringArrayList(defaultValues));
-    }
-
-    private static List<String> getProperties(PropertyResolver propertyResolver, String key) {
-        return getProperties(propertyResolver, key, Collections.emptyList());
-    }
-
-    private final Map<String, PathWatcher> watcherBySiteName = new HashMap<>();
-
-    @Autowired
-    private ApplicationContext applicationContext;
-
     @Autowired
     private SiteRepository siteRepository;
 
     @Autowired
-    private SettingsService settingsService;
+    private AssetService assetService;
 
     @Autowired
     private ItemService itemService;
 
-    @Autowired
-    private CacheManager cacheManager;
-
-    @Autowired
-    private TaskExecutor taskExecutor;
-
-    public List<Site> getAllSites() {
-        return siteRepository.findAll();
+    public Site findSiteByHost(String host) {
+        return siteRepository.findByHost(host);
     }
 
-    public PathWatcher getWatcher(Site site) {
-        return watcherBySiteName.get(site.getName());
-    }
-
-    public Site findSiteByName(String name) {
-        return siteRepository.findByName(name);
-    }
-
-    private Site findOrCreateSiteByName(String name) {
-        Site site = findSiteByName(name);
-        if (site == null) {
-            site = new Site();
-            site.setName(name);
-//            site = saveSite(site);
-        }
-
-        return site;
-    }
-
-    public Site findSiteByRequest(HttpServletRequest request) {
-        return findSiteByName(request.getServerName());
-    }
-
-    private void reload(Site site, Path file) {
-        try {
-            String fileName = file.getFileName().toString();
-
-            if (".settings.xml".equals(fileName)) {
-                settingsService.reloadSettings(site, file);
-
-                return;
-            }
-
-            if (!fileName.endsWith(".xml")) {
-                LOG.info("Ignoring " + file);
-
-                return;
-            }
-
-            URI uri = site.toURI(file);
-            Item item = itemService.findItemBySiteAndURI(site, uri);
-            if (item != null) {
-                BasicFileAttributes fileAttributes = Files.readAttributes(file, BasicFileAttributes.class);
-                LocalDateTime lastModified = LocalDateTime.ofInstant(
-                        fileAttributes.lastModifiedTime().toInstant(),
-                        ZoneId.systemDefault());
-                if (lastModified.isAfter(item.getLastModified())) {
-                    itemService.loadItem(site, file);
-                    LOG.info("Reloaded " + file);
-                } else {
-                    item.setSyncId(site.getSyncId());
-                    item = itemService.saveItem(item);
-                }
-            } else {
-                itemService.loadItem(site, file);
-                LOG.info("Loaded " + file);
-            }
-        } catch (Exception e) {
-            LOG.error("Error reloading file " + file, e);
-//            throw new RuntimeException(e);
-        }
-    }
-
-    private Site saveSite(Site site) {
+    public Site saveSite(Site site) {
         return siteRepository.save(site);
     }
 
-    private void deleteSitesNotIn(List<Site> sites) {
+    private void deleteSite(Site site) {
+//        TODO Delete all items and assets too
+        siteRepository.delete(site);
+    }
+
+    public void deleteSitesNotIn(List<Site> sites) {
         siteRepository.findAllNotIn(sites)
-                .forEach(siteRepository::delete);
+                .forEach(this::deleteSite);
     }
 
-    private void deleteItemByFile(Site site, Path file) {
-        URI uri = site.toURI(file);
-        itemService.deleteItemBySiteAndURI(site, uri);
-    }
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void sync(Site site) throws IOException {
+        Webdav webdav = site.getWebdav();
+        Sardine sardine = SardineFactory.begin(webdav.getUsername(), webdav.getPassword());
 
-    public void config() throws IOException {
-        Environment environment = applicationContext.getEnvironment();
-        List<String> keys = getProperties(environment, "anecdot.sites");
+        Date now = Date.from(Instant.now());
+        List<Asset> changed = new ArrayList<>();
 
-        List<Site> sites = new ArrayList<>();
+        String webdavUrl = webdav.getUrl();
+        DavResourceUtils.walk(sardine, webdavUrl, new DavResourceVisitor() {
+            @Override
+            public void visit(Sardine sardine, String baseUrl, DavResource resource) {
+                if (resource.isDirectory()) {
+                    return;
+                }
 
-        for (String key : keys) {
-            String prefix = String.format("anecdot.site.%s", key);
-            String name = environment.getProperty(prefix + ".host");
+                String absoluteUrl = baseUrl + resource.getPath();
+                String relativePath = StringUtils.removeStart(absoluteUrl, webdavUrl);
+                Asset asset = assetService.findAssetBySiteAndPath(site, relativePath);
+                if (asset == null) {
+                    asset = new Asset();
+                    asset.setSite(site);
+                    asset.setPath(relativePath);
+                }
 
-            Cache cache = cacheManager.getCache("sites");
-            cache.evict(name);
+                Path path = Paths.get("./tmp", site.getHost(), asset.getPath());
 
-            final Site site = findOrCreateSiteByName(name);
-            site.setBusy(true);
-            site.setSyncId(UUID.randomUUID().toString());
+                if (!StringUtils.equals(resource.getEtag(), asset.getEtag())) {
+                    LOG.debug("Updating " + path);
+                    if (!Files.exists(path)) {
+                        try {
+                            Files.createDirectories(path.getParent());
 
-//            List<String> names = getProperties(propertyResolver, prefix + ".aliases");
-//            site.getAliases().addAll(names);
+                            String url = baseUrl + resource.getPath();
+                            try (InputStream in = sardine.get(url);
+                                 OutputStream out = Files.newOutputStream(path)) {
 
-            String content = environment.getProperty(prefix + ".base");
-            if (StringUtils.hasText(content)) {
-                site.setContentDirectory(Paths.get(content));
+                                IOUtils.copyLarge(in, out);
+                            }
+
+                        } catch (IOException e) {
+                            throw new RuntimeException(e);
+                        }
+                    }
+
+                    asset.setContentLength(resource.getContentLength());
+                    asset.setModified(resource.getModified());
+                    asset.setEtag(resource.getEtag());
+
+                    changed.add(asset);
+                } else {
+                    LOG.debug("Not modified: " + path);
+                }
+
+                asset.setSynced(now);
+                asset = assetService.saveAsset(asset);
             }
+        });
 
-            String theme = environment.getProperty(prefix + ".theme");
-            if (StringUtils.hasText(theme)) {
-                site.setThemeDirectory(Paths.get(theme));
+        List<Asset> obsolete = assetService.findAllAssetsSyncedBefore(site, now);
+        obsolete.forEach(itemService::deleteItemForAsset);
+        assetService.deleteAssets(obsolete);
+
+        changed.forEach(asset -> {
+            String fileName = FilenameUtils.getBaseName(asset.getPath());
+            String extension = FilenameUtils.getExtension(asset.getPath());
+
+            if (!fileName.startsWith(".") && "xml".equalsIgnoreCase(extension)) {
+                itemService.loadItem(asset);
             }
-
-            String home = environment.getProperty(prefix + ".home", "/home");
-            site.setHome(home);
-
-            Locale locale = environment.getProperty(prefix + ".locale", Locale.class);
-            site.setLocale(locale);
-
-            Site saved = saveSite(site);
-            sites.add(saved);
-            cache.put(name, saved);
-
-            PathWatcher watcher = new PathWatcher(site.getContentDirectory());
-            watcherBySiteName.put(site.getName(), watcher);
-
-            watcher.setHandler(new PathWatcher.AbstractWatchHandler() {
-                @Override
-                public void initialized() {
-                    site.setBusy(false);
-                    saveSite(site);
-                    itemService.deleteAllObsoleteItems(site);
-                }
-
-                @Override
-                public void visited(Path path) {
-                    if (Files.isRegularFile(path)) {
-                        reload(site, path);
-                    }
-                }
-
-                @Override
-                public void created(Path path) {
-                    if (Files.isRegularFile(path)) {
-                        reload(site, path);
-                    }
-                }
-
-                @Override
-                public void modified(Path path) {
-                    if (Files.isRegularFile(path)) {
-                        reload(site, path);
-                    }
-                }
-
-                @Override
-                public void deleted(Path path, boolean regularFile) {
-                    if (regularFile) {
-                        deleteItemByFile(site, path);
-                    }
-                }
-            });
-        }
-
-        deleteSitesNotIn(sites);
-    }
-
-    @Async
-    public void start(PathWatcher watcher) {
-        LOG.info("Starting watcher for directory {}", watcher.getDirectory());
-
-        try {
-            while (!watcher.isClosed()) {
-                watcher.watch();
-            }
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        } finally {
-            watcher.close();
-
-            LOG.info("Closed watcher for directory {}", watcher.getDirectory());
-        }
+        });
     }
 }

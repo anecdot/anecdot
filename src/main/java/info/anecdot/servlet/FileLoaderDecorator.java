@@ -16,17 +16,16 @@ import java.nio.file.Path;
  */
 public class FileLoaderDecorator implements Loader<String> {
 
-    private final SiteService siteService;
-
     private final FileLoader loader;
+    private final SiteService siteService;
 
     @Override
     public Reader getReader(String templateName) {
         HttpServletRequest request = ((ServletRequestAttributes) RequestContextHolder.currentRequestAttributes())
                 .getRequest();
 
-        Site site = siteService.findSiteByRequest(request);
-        Path directory = site.getThemeDirectory();
+        Site site = siteService.findSiteByHost(request.getServerName());
+        Path directory = site.getTheme();
 
         try {
             String prefix = directory.toRealPath().toString();
@@ -66,8 +65,8 @@ public class FileLoaderDecorator implements Loader<String> {
         return loader.createCacheKey(templateName);
     }
 
-    public FileLoaderDecorator(SiteService siteService, FileLoader loader) {
-        this.siteService = siteService;
+    public FileLoaderDecorator(FileLoader loader, SiteService siteService) {
         this.loader = loader;
+        this.siteService = siteService;
     }
 }

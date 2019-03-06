@@ -2,45 +2,49 @@ package info.anecdot.servlet;
 
 import info.anecdot.content.Site;
 import info.anecdot.content.SiteService;
-import info.anecdot.image.ImagingService;
+import info.anecdot.gm.ResizeService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationContext;
 import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Component;
-import org.springframework.web.servlet.resource.AbstractResourceResolver;
+import org.springframework.web.servlet.resource.ResourceResolver;
 import org.springframework.web.servlet.resource.ResourceResolverChain;
 
 import javax.servlet.http.HttpServletRequest;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.List;
 
 /**
  * @author Stephan Grundner
  */
 @Component
-public class FileResourceResolver extends AbstractResourceResolver {
+public class FileResourceResolver implements ResourceResolver {
 
     private static final String THEME_URL_PATH_PREFIX = "theme/";
-
-    @Autowired
-    private ApplicationContext applicationContext;
 
     @Autowired
     private SiteService siteService;
 
     @Autowired
-    private ImagingService imagingService;
+    private ResizeService resizeService;
+
+    @Autowired
+    private ApplicationContext applicationContext;
 
     @Override
-    protected Resource resolveResourceInternal(HttpServletRequest request, String requestPath, List<? extends Resource> locations, ResourceResolverChain chain) {
-        Site site = siteService.findSiteByRequest(request);
+    public Resource resolveResource(HttpServletRequest request, String requestPath, List<? extends Resource> locations, ResourceResolverChain chain) {
+        Site site = siteService.findSiteByHost(request.getServerName());
 
-        if (site != null && !site.isBusy()) {
-            Path directory = requestPath.startsWith(THEME_URL_PATH_PREFIX)
-                    ? site.getThemeDirectory()
-                    : site.getContentDirectory();
+        if (site != null) {
+            Path directory;
 
-            requestPath = resolveUrlPathInternal(requestPath, locations, chain);
+            if (requestPath.startsWith(THEME_URL_PATH_PREFIX)) {
+                directory = site.getTheme();
+                requestPath = resolveUrlPath(requestPath, null, null);
+            } else {
+                directory = Paths.get("./tmp/", site.getHost());
+            }
 
             String location = "file:" + directory.toString();
             if (!location.endsWith("/")) {
@@ -49,10 +53,10 @@ public class FileResourceResolver extends AbstractResourceResolver {
 
             location += requestPath;
 
-            if (imagingService.isImageRequest(request)) {
-
+            if (resizeService.isResizeRequest(request)) {
                 try {
-                    return imagingService.resolveImageResource(location, request);
+
+                    return resizeService.resolveImageResource(location, request);
                 } catch (Exception e) {
                     throw new RuntimeException(e);
                 }
@@ -65,11 +69,11 @@ public class FileResourceResolver extends AbstractResourceResolver {
     }
 
     @Override
-    protected String resolveUrlPathInternal(String resourceUrlPath, List<? extends Resource> locations, ResourceResolverChain chain) {
-        if (resourceUrlPath.startsWith(THEME_URL_PATH_PREFIX)) {
-            return resourceUrlPath.substring(THEME_URL_PATH_PREFIX.length(), resourceUrlPath.length());
+    public String resolveUrlPath(String resourcePath, List<? extends Resource> locations, ResourceResolverChain chain) {
+        if (resourcePath != null && resourcePath.startsWith(THEME_URL_PATH_PREFIX)) {
+            return resourcePath.substring(THEME_URL_PATH_PREFIX.length(), resourcePath.length());
         }
 
-        return resourceUrlPath;
+        return resourcePath;
     }
 }

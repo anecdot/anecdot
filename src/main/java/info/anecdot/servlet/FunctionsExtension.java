@@ -41,7 +41,8 @@ public class FunctionsExtension extends AbstractExtension {
             HttpServletRequest request = currentRequest();
 
             SiteService siteService = applicationContext.getBean(SiteService.class);
-            Site site = siteService.findSiteByRequest(request);
+//            Site site = siteService.findSiteByRequest(request);
+            Site site = (Site) request.getAttribute(Site.class.getName());
 
             EntityManager entityManager = applicationContext.getBean(EntityManager.class);
 
@@ -56,11 +57,14 @@ public class FunctionsExtension extends AbstractExtension {
             }
 
             StringBuilder ql = new StringBuilder();
-            ql.append("select i from Item i where i.site = :site");
+            ql.append("select i " +
+                    "from Item i " +
+                    "join i.asset a " +
+                    "where a.site = :site");
 
             String uri = (String) args.get("uri");
             if (StringUtils.hasText(uri)) {
-                ql.append(" and i.uri like '").append(uri).append('\'');
+                ql.append(" and a.path like '").append(uri).append(".xml\'");
             }
 
             String sort = (String) args.get("sort");
@@ -101,7 +105,7 @@ public class FunctionsExtension extends AbstractExtension {
             SiteService siteService = applicationContext.getBean(SiteService.class);
             ItemService itemService = applicationContext.getBean(ItemService.class);
             String host = servletRequestAttributes.getRequest().getServerName();
-            Site site = siteService.findSiteByName(host);
+            Site site = siteService.findSiteByHost(host);
             expressionEvaluationContext.setVariable("site", site);
             ((StandardEvaluationContext) expressionEvaluationContext).setBeanResolver(((context, beanName) -> {
                 return applicationContext.getBean(beanName);
@@ -169,12 +173,12 @@ public class FunctionsExtension extends AbstractExtension {
                     HttpServletRequest request = currentRequest();
 
                     SiteService siteService = applicationContext.getBean(SiteService.class);
-                    Site site = siteService.findSiteByRequest(request);
+                    Site site = siteService.findSiteByHost(request.getServerName());
 
-                    return request.getScheme() + "://" + site.getName() + path + "/" + knot.getValue();
+                    return request.getScheme() + "://" + site.getHost() + path + "/" + ((Text) knot).getValue();
                 } else {
 
-                    return knot.getValue();
+                    return ((Text) knot).getValue();
                 }
             }
 

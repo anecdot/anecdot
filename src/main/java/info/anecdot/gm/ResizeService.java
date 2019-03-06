@@ -1,4 +1,4 @@
-package info.anecdot.image;
+package info.anecdot.gm;
 
 import org.apache.commons.io.FilenameUtils;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -13,18 +13,14 @@ import org.springframework.stereotype.Service;
 import javax.servlet.http.HttpServletRequest;
 import java.io.File;
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.Arrays;
-import java.util.UUID;
 
 /**
  * @author Stephan Grundner
  */
 @Service
 @Primary
-public class GraphicsMagickService implements ImagingService {
+public class ResizeService {
 
     private class Conversion {
 
@@ -54,12 +50,10 @@ public class GraphicsMagickService implements ImagingService {
     @Autowired
     private CacheManager cacheManager;
 
-    @Override
-    public boolean isImageRequest(HttpServletRequest request) {
+    public boolean isResizeRequest(HttpServletRequest request) {
         return request.getParameter("size") != null;
     }
 
-    @Override
     public Resource resolveImageResource(String location, HttpServletRequest request) throws IOException {
         Cache cache = cacheManager.getCache("images");
         String url = request.getRequestURL()

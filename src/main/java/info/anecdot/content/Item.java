@@ -1,49 +1,36 @@
 package info.anecdot.content;
 
+import org.apache.commons.lang3.StringUtils;
+
 import javax.persistence.*;
 import java.net.URI;
-import java.time.LocalDateTime;
+import java.util.HashSet;
+import java.util.Set;
 
 /**
  * @author Stephan Grundner
  */
 @Entity
-@Table(uniqueConstraints = @UniqueConstraint(columnNames = {"site_id", "uri"}))
-@DiscriminatorValue("item")
+@SecondaryTable(name = "item")
 public class Item extends Knot {
 
-    @ManyToOne(optional = false)
-    @JoinColumn(name = "site_id")
-    private Site site;
+    @OneToOne
+    @JoinColumn(name = "asset_id", table = "item")
+    private Asset asset;
 
-    @Convert(converter = URIConverter.class)
-    private URI uri;
-
+    @Column(table = "item")
     private String type;
 
-    private LocalDateTime lastModified;
-    private String syncId;
+    @Column(table = "item")
+    private String title;
 
+    @Column(table = "item")
     private String description;
 
-    @Convert(converter = URIConverter.class)
-    private URI image;
-
-    public Site getSite() {
-        return site;
-    }
-
-    public void setSite(Site site) {
-        this.site = site;
-    }
-
-    public URI getUri() {
-        return uri;
-    }
-
-    public void setUri(URI uri) {
-        this.uri = uri;
-    }
+    @ElementCollection()
+    @CollectionTable(name = "tag")
+    @Column(name = "value", table = "item")
+    private final Set<String> tags = new HashSet<>();
 
     public String getType() {
         return type;
@@ -53,20 +40,20 @@ public class Item extends Knot {
         this.type = type;
     }
 
-    public LocalDateTime getLastModified() {
-        return lastModified;
+    public Asset getAsset() {
+        return asset;
     }
 
-    public void setLastModified(LocalDateTime lastModified) {
-        this.lastModified = lastModified;
+    public void setAsset(Asset asset) {
+        this.asset = asset;
     }
 
-    public String getSyncId() {
-        return syncId;
+    public String getTitle() {
+        return title;
     }
 
-    public void setSyncId(String syncId) {
-        this.syncId = syncId;
+    public void setTitle(String title) {
+        this.title = title;
     }
 
     public String getDescription() {
@@ -77,11 +64,11 @@ public class Item extends Knot {
         this.description = description;
     }
 
-    public URI getImage() {
-        return image;
+    public Set<String> getTags() {
+        return tags;
     }
 
-    public void setImage(URI image) {
-        this.image = image;
+    public URI getUri() {
+        return URI.create(StringUtils.removeEnd(asset.getPath(), ".xml"));
     }
 }

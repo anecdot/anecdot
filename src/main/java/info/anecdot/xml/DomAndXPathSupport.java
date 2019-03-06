@@ -120,4 +120,25 @@ public interface DomAndXPathSupport {
 
         return null;
     }
+
+    default boolean isRootNode(Node node) {
+        Node parentNode = node.getParentNode();
+        return parentNode != null && parentNode.getNodeType() == Node.DOCUMENT_NODE;
+    }
+
+    default boolean hasChildElements(Node node) {
+        NodeList children = node.getChildNodes();
+        if (children.getLength() == 0) {
+            return false;
+        }
+
+        for (int i = 0; i < children.getLength(); i++) {
+            Node child = children.item(i);
+            if (child.getNodeType() == Node.ELEMENT_NODE) {
+                return true;
+            }
+        }
+
+        return false;
+    }
 }

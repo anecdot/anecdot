@@ -1,23 +1,22 @@
-package info.anecdot.io;
+package info.anecdot.content;
 
 import org.springframework.util.StringUtils;
 
 import javax.persistence.AttributeConverter;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.Optional;
 
 /**
  * @author Stephan Grundner
  */
-public class PathToStringConverter implements AttributeConverter<Path, String> {
+public class PathConverter implements AttributeConverter<Path, String> {
 
     @Override
     public String convertToDatabaseColumn(Path path) {
-        if (path != null) {
-            return path.toString();
-        }
-
-        return null;
+        return Optional.ofNullable(path)
+                .map(Path::toString)
+                .orElse(null);
     }
 
     @Override

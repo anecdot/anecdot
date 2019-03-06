@@ -1,11 +1,6 @@
 package info.anecdot.content;
 
-import info.anecdot.io.PathToStringConverter;
-import org.apache.commons.io.FilenameUtils;
-import org.springframework.util.StringUtils;
-
 import javax.persistence.*;
-import java.net.URI;
 import java.nio.file.Path;
 import java.util.Locale;
 
@@ -20,23 +15,16 @@ public class Site {
     private Long id;
 
     @Column(unique = true)
-    private String name;
+    private String host;
 
-    private boolean busy;
-
-    private String home;
     private Locale locale;
+    private String home;
 
-    @Convert(converter = PathToStringConverter.class)
-    private Path contentDirectory;
+    @Convert(converter = PathConverter.class)
+    private Path theme;
 
-    @Convert(converter = PathToStringConverter.class)
-    private Path themeDirectory;
-
-//    @OneToMany(mappedBy = "site", fetch = FetchType.LAZY, cascade = CascadeType.REMOVE, orphanRemoval = true)
-//    private final List<Item> items = new ArrayList<>();
-
-    private String syncId;
+    @Embedded
+    private Webdav webdav;
 
     public Long getId() {
         return id;
@@ -44,30 +32,6 @@ public class Site {
 
     public void setId(Long id) {
         this.id = id;
-    }
-
-    public String getName() {
-        return name;
-    }
-
-    public void setName(String name) {
-        this.name = name;
-    }
-
-    public boolean isBusy() {
-        return busy;
-    }
-
-    public void setBusy(boolean busy) {
-        this.busy = busy;
-    }
-
-    public String getHome() {
-        return home;
-    }
-
-    public void setHome(String home) {
-        this.home = home;
     }
 
     public Locale getLocale() {
@@ -78,51 +42,35 @@ public class Site {
         this.locale = locale;
     }
 
-    public Path getContentDirectory() {
-        return contentDirectory;
+    public String getHost() {
+        return host;
     }
 
-    public void setContentDirectory(Path contentDirectory) {
-        this.contentDirectory = contentDirectory;
+    public void setHost(String host) {
+        this.host = host;
     }
 
-    public Path getThemeDirectory() {
-        return themeDirectory;
+    public String getHome() {
+        return home;
     }
 
-    public void setThemeDirectory(Path themeDirectory) {
-        this.themeDirectory = themeDirectory;
+    public void setHome(String home) {
+        this.home = home;
     }
 
-//    public List<Item> getItems() {
-//        return Collections.unmodifiableList(items);
-//    }
-//
-//    public boolean addItem(Item item) {
-//        if (items.add(item)) {
-//            item.site = this;
-//
-//            return true;
-//        }
-//
-//        return false;
-//    }
-
-    public String getSyncId() {
-        return syncId;
+    public Path getTheme() {
+        return theme;
     }
 
-    public void setSyncId(String syncId) {
-        this.syncId = syncId;
+    public void setTheme(Path theme) {
+        this.theme = theme;
     }
 
-    public URI toURI(Path file) {
-        String uri = contentDirectory.relativize(file).toString();
-        uri = FilenameUtils.removeExtension(uri);
-        if (!StringUtils.startsWithIgnoreCase(uri, "/")) {
-            uri = "/" + uri;
-        }
+    public Webdav getWebdav() {
+        return webdav;
+    }
 
-        return URI.create(uri);
+    public void setWebdav(Webdav webdav) {
+        this.webdav = webdav;
     }
 }

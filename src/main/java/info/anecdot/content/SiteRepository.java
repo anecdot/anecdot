@@ -13,7 +13,7 @@ import java.util.List;
 @Repository
 public interface SiteRepository extends JpaRepository<Site, Long> {
 
-    Site findByName(String name);
+    Site findByHost(String host);
 
     @Query("from Site s where s not in ?1")
     List<Site> findAllNotIn(Collection<Site> sites);

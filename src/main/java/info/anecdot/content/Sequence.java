@@ -9,20 +9,21 @@ import java.util.List;
  * @author Stephan Grundner
  */
 @Entity
+@Table(uniqueConstraints = @UniqueConstraint(columnNames = {"knot_id", "name"}))
 public class Sequence {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    String name;
-
     @ManyToOne(optional = false)
-    private Knot parent;
+    @JoinColumn(name = "knot_id")
+    private Knot knot;
 
-    @OneToMany(mappedBy = "sequence", fetch = FetchType.EAGER, cascade = {CascadeType.ALL}, orphanRemoval = true)
-    @OrderColumn(name = "ordinal")
-    private final List<Knot> knots = new ArrayList<>();
+    private String name;
+
+    @OneToMany(mappedBy = "parent", cascade = CascadeType.ALL, fetch = FetchType.EAGER, orphanRemoval = true)
+    private final List<Knot> children = new ArrayList<>();
 
     public Long getId() {
         return id;
@@ -32,29 +33,29 @@ public class Sequence {
         this.id = id;
     }
 
+    public Knot getKnot() {
+        return knot;
+    }
+
+    public void setKnot(Knot knot) {
+        this.knot = knot;
+    }
+
     public String getName() {
         return name;
     }
 
-    void setName(String name) {
+    public void setName(String name) {
         this.name = name;
     }
 
-    public Knot getParent() {
-        return parent;
+    public List<Knot> getChildren() {
+        return Collections.unmodifiableList(children);
     }
 
-    public void setParent(Knot parent) {
-        this.parent = parent;
-    }
-
-    public List<Knot> getKnots() {
-        return Collections.unmodifiableList(knots);
-    }
-
-    public void appendKnot(Knot knot) {
-        if (knots.add(knot)) {
-            knot.setSequence(this);
+    public void appendChild(Knot child) {
+        if (children.add(child)) {
+            child.setParent(this);
         }
     }
 }

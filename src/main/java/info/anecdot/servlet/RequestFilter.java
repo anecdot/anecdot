@@ -1,10 +1,6 @@
 package info.anecdot.servlet;
 
-import info.anecdot.content.Item;
-import info.anecdot.content.ItemService;
-import info.anecdot.content.Site;
-import info.anecdot.content.SiteService;
-import info.anecdot.tracking.TrackingService;
+import info.anecdot.content.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.web.ErrorProperties;
 import org.springframework.boot.autoconfigure.web.ServerProperties;
@@ -16,7 +12,6 @@ import javax.servlet.*;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import java.io.IOException;
-import java.net.URI;
 
 /**
  * @author Stephan Grundner
@@ -28,14 +23,18 @@ public class RequestFilter implements Filter {
     @Autowired
     private ServerProperties serverProperties;
 
+//    @Autowired
+//    private TrackingService trackingService;
+//
+
     @Autowired
-    private TrackingService trackingService;
+    private AssetService assetService;
 
     @Autowired
     private SiteService siteService;
 
-    @Autowired
-    private ViewResolver viewResolver;
+//    @Autowired
+//    private ViewResolver viewResolver;
 
     @Autowired
     private ItemService itemService;
@@ -51,23 +50,19 @@ public class RequestFilter implements Filter {
         String uri = pathHelper.getRequestUri(request);
 
         if (!uri.equals(error.getPath()) && !uri.startsWith("/theme")) {
-            Site site = siteService.findSiteByRequest(request);
+            Site site = siteService.findSiteByHost(request.getServerName());
             if (site != null) {
                 request.setAttribute(Site.class.getName(), site);
+                Asset asset = assetService.findAssetBySiteAndPath(site, uri + ".xml");
+                if (asset != null) {
+                    request.setAttribute(Asset.class.getName(), asset);
+                    Item item = itemService.findItemByAsset(asset);
+                    if (item != null) {
+                        request.setAttribute(Item.class.getName(), item);
+                        itemHandler.handleRequest(request, response);
 
-                trackingService.track(request, response);
-
-                if (site.isBusy()) {
-//                    TODO Render busy view
-                    return;
-                }
-
-                Item item = itemService.findItemBySiteAndURI(site, uri);
-                if (item != null) {
-
-                    itemHandler.handleRequest(request, response);
-
-                    return;
+                        return;
+                    }
                 }
             }
         }
